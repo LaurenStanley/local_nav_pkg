@@ -27,6 +27,7 @@ find_package(custom_nav_stack_pkg REQUIRED)
 rosidl_generate_interfaces(${PROJECT_NAME}
   "msg/Penguin.msg"
   "msg/PenguinList.msg"
+  "msg/PenguinApproachStatus.msg"
   DEPENDENCIES geometry_msgs
 )
 ament_export_dependencies(rosidl_default_runtime)

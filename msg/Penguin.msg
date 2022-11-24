@@ -1,3 +1,3 @@
 string label
-string status
+#string status
 geometry_msgs/Point point

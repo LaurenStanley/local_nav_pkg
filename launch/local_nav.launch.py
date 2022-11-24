@@ -35,7 +35,7 @@ def generate_launch_description():
    get_penguin_positions = launch_ros.actions.Node(
       package='local_nav_pkg',
       executable='get_penguin_positions.py',
-      name='get_obstacle_positions'
+      name='get_penguin_positions'
    )
 
    goal_pose_from_penguins = launch_ros.actions.Node(
@@ -51,6 +51,6 @@ def generate_launch_description():
         #client_python,  
         approach_speed_controller,
         get_penguin_positions,
-        goal_pose_from_penguins
+        #goal_pose_from_penguins
     ])
 
