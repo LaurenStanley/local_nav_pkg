@@ -16,27 +16,28 @@ import math
 
 list_of_points = []
 penguin_list = []
-penguin_label_count = 0
+penguin_label_count = 1
 
-x = 0.0
-y = 0.0
+#x = 0.0
+#y = 0.0
 x_goal = 0.0
 y_goal = 0.0
 
 odometry_pose_x = 0.0
 odometry_pose_y = 0.0
 
-penguin_label = str(0)
-approach_status = "engaging"
-visited_points = []
+current_penguin_label = str(0)
+approach_status = "pending"
+visited_penguins = []
 
 class ObstaclePublisherNode(Node):
 
     def __init__(self):
         super().__init__('target_obstacle_publisher')
-        self.penguin_list_subscriber = self.create_subscription(PenguinList, 'penguin_list',self.penguin_list_callback,10)
-        self.point_cloud_subscriber = self.create_subscription(MarkerArray, 'visualization_marker_array', self.marker_array_callback, 10)
+    
         self.odometry_subscriber = self.create_subscription(Odometry, 'odometry/filtered', self.odometry_callback, 10)
+        self.point_cloud_subscriber = self.create_subscription(MarkerArray, 'visualization_marker_array', self.marker_array_callback, 10)
+        self.penguin_list_subscriber = self.create_subscription(PenguinList, 'penguin_list',self.penguin_list_callback,10)
         self.status_subscriber = self.create_subscription(PenguinApproachStatus, 'penguin_approach_status', self.approach_status_callback, 10)
         
         self.penguin_publisher_ = self.create_publisher(PenguinList, 'penguin_list', 10)
@@ -44,71 +45,17 @@ class ObstaclePublisherNode(Node):
         self.goal_pose_publisher_ = self.create_publisher(PoseStamped, 'goal_pose', 10)
         self.goal_pose_timer_ = self.create_timer(0.1, self.publish_goal_pose)
         self.approach_status_publisher_ = self.create_publisher(PenguinApproachStatus, 'penguin_approach_status', 10)
-        self.approach_status_timer_ = self.create_timer(.1, self.publish_approach_status)
-        
-
-    def publish_penguins(self):     
-        global penguin_list
-        global list_of_points
-        global penguin_label_count
-
-        final_penguin_list = PenguinList()
-        accumulated_penguin_list = []
-        already_exists = False
-        for i in range(len(list_of_points)):
-            for j in range(len(penguin_list)):
-                dist = (penguin_list[j].point.x - list_of_points[i][0])**2 + (penguin_list[j].point.y - list_of_points[i][1])**2
-                if dist < 0.5:
-                    #print('Penguin Exists')
-                    old_penguin = Penguin()
-                    old_penguin.point.x = list_of_points[i][0]
-                    old_penguin.point.y = list_of_points[i][1]
-                    old_penguin.point.z = 0.0
-                    old_penguin.label = penguin_list[j].label
-                    #old_penguin.status = penguin_list[j].status
-                    accumulated_penguin_list.append(old_penguin)
-                    already_exists = True
-            if not already_exists:
-                #print('Penguin Does Not Exist')
-                new_penguin = Penguin()
-                new_penguin.point.x = list_of_points[i][0]
-                new_penguin.point.y = list_of_points[i][1]
-                new_penguin.point.z = 0.0
-                new_penguin.label = str(penguin_label_count)
-                #new_penguin.status = "unvisited"
-                penguin_label_count += 1
-                accumulated_penguin_list.append(new_penguin)
-        
-        sorted_penguin_list = sorted(accumulated_penguin_list, key=lambda penguin: penguin.label)
-        #if len(sorted_penguin_list) > 0:
-        #    sorted_penguin_list[0].status = "current"
-        final_penguin_list.penguins = sorted_penguin_list
-        print(final_penguin_list)    
-        self.penguin_publisher_.publish(final_penguin_list)
+        self.approach_status_timer_ = self.create_timer(0.1, self.publish_approach_status)
     
-    def penguin_list_callback(self, msg):
-        global x_goal
-        global y_goal
-        global penguin_list
-        global visited_points
-        global penguin_label
+    # Read current position
+    def odometry_callback(self, msg):
         global odometry_pose_x
         global odometry_pose_y
-
-        distance = 100
-        penguin_list = []
-        
-        for i in range(len(msg.penguins)):
-            #print(msg.penguins[i])
-            penguin_list.append(msg.penguins[i])
-            if msg.penguins[i].label not in visited_points:
-                i_distance = (odometry_pose_x - msg.penguins[i].point.x)**2 + (odometry_pose_y - msg.penguins[i].point.y)**2
-                if i_distance < distance:
-                    penguin_label = msg.penguins[i].label
-                    x_goal = msg.penguins[i].point.x
-                    y_goal = msg.penguins[i].point.y
-                    distance = i_distance
-
+        odometry_pose_x = msg.pose.pose.position.x
+        odometry_pose_y = msg.pose.pose.position.y
+    
+    
+    # Create a list of points as read from the obstacle detector
     def marker_array_callback(self, msg):
         global list_of_points
         list_of_points = []
@@ -118,19 +65,94 @@ class ObstaclePublisherNode(Node):
             point.append(msg.markers[i].pose.position.y)
             point.append(msg.markers[i].pose.position.z)
             list_of_points.append(point)
-            #print(point)
-
-    def publish_approach_status(self):
-        global penguin_label
+              
+    
+    # Read list of existing penguins from last run through this script
+    def penguin_list_callback(self, msg):
+        global penguin_list
+        
+        penguin_list = []
+        for i in range(len(msg.penguins)):
+            penguin_list.append(msg.penguins[i])
+        
+    # Read approach status, if completed on the last round, move back to zero state and set status to pending
+    def approach_status_callback(self, msg):
+        global current_penguin_label
         global approach_status
+        global visited_penguins
 
-        penguin_status = PenguinApproachStatus()
+        current_penguin_label = msg.label
+        approach_status = msg.status
 
-        penguin_status.label = penguin_label
-        penguin_status.status = approach_status
+        if approach_status == "complete":
+            if current_penguin_label not in visited_penguins:
+                visited_penguins.append(current_penguin_label)
+            current_penguin_label = str(0)
+            approach_status = "pending"
 
-        self.approach_status_publisher_.publish(penguin_status)
+    def publish_penguins(self):     
+        global penguin_list
+        global list_of_points
+        global penguin_label_count
 
+        global x_goal
+        global y_goal
+        global visited_penguins
+        global current_penguin_label
+        global odometry_pose_x
+        global odometry_pose_y
+        global approach_status    
+
+        final_penguin_list = PenguinList()
+
+        accumulated_penguin_list = []
+        for i in range(len(list_of_points)):
+            already_exists = False
+            for j in range(len(penguin_list)):
+                dist = (penguin_list[j].point.x - list_of_points[i][0])**2 + (penguin_list[j].point.y - list_of_points[i][1])**2
+                if dist < 0.5:
+                    #print('Penguin Exists')
+                    old_penguin = Penguin()
+                    old_penguin.point.x = list_of_points[i][0]
+                    old_penguin.point.y = list_of_points[i][1]
+                    old_penguin.point.z = 0.0
+                    old_penguin.label = penguin_list[j].label
+                    accumulated_penguin_list.append(old_penguin)
+                    already_exists = True
+            if not already_exists:
+                #print('Penguin Does Not Exist')
+                new_penguin = Penguin()
+                new_penguin.point.x = list_of_points[i][0]
+                new_penguin.point.y = list_of_points[i][1]
+                new_penguin.point.z = 0.0
+                new_penguin.label = str(penguin_label_count)
+                penguin_label_count += 1
+                accumulated_penguin_list.append(new_penguin)
+            
+        sorted_penguin_list = sorted(accumulated_penguin_list, key=lambda penguin: penguin.label)
+        
+        # pick closest penguin as target
+        distance = 100
+        if approach_status == "pending":
+            for i in range(len(sorted_penguin_list)):
+                #print(msg.penguins[i])
+                if sorted_penguin_list[i].label not in visited_penguins:
+                    i_distance = (odometry_pose_x - sorted_penguin_list[i].point.x)**2 + (odometry_pose_y - sorted_penguin_list[i].point.y)**2
+                    if i_distance < distance:
+                        current_penguin_label = sorted_penguin_list[i].label
+                        x_goal = sorted_penguin_list[i].point.x
+                        y_goal = sorted_penguin_list[i].point.y
+                        distance = i_distance
+        else:
+            for i in range(len(sorted_penguin_list)):
+                if sorted_penguin_list[i].label == current_penguin_label:
+                    x_goal = sorted_penguin_list[i].point.x
+                    y_goal = sorted_penguin_list[i].point.y
+                    
+        final_penguin_list.penguins = sorted_penguin_list
+        print(final_penguin_list)    
+        self.penguin_publisher_.publish(final_penguin_list)
+    
     def publish_goal_pose(self):     
         global x_goal
         global y_goal
@@ -149,23 +171,16 @@ class ObstaclePublisherNode(Node):
         self.goal_pose_publisher_.publish(goal_pose)
 
 
-    def odometry_callback(self, msg):
-        global odometry_pose_x
-        global odometry_pose_y
-        odometry_pose_x = msg.pose.pose.position.x
-        odometry_pose_y = msg.pose.pose.position.y
-    
-    def approach_status_callback(self, msg):
-        global penguin_label
+    def publish_approach_status(self):
+        global current_penguin_label
         global approach_status
-        global visited_points
-        penguin_label = msg.label
-        approach_status = msg.status
-        if approach_status == "complete":
-            visited_points.append(penguin_label)
 
+        penguin_status = PenguinApproachStatus()
 
-  	
+        penguin_status.label = current_penguin_label
+        penguin_status.status = approach_status
+
+        self.approach_status_publisher_.publish(penguin_status) 
  
 def main(args=None):  
     rclpy.init(args=args)

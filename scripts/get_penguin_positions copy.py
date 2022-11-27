@@ -40,6 +40,7 @@ class ObstaclePublisherNode(Node):
         global penguin_list
         global list_of_points
         global penguin_label_count
+        
         final_penguin_list = PenguinList()
         accumulated_penguin_list = []
         already_exists = False

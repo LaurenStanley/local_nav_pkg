@@ -7,7 +7,7 @@ from launch.actions import ExecuteProcess
 
 def generate_launch_description():
     pkg_share_local_nav = launch_ros.substitutions.FindPackageShare(package='local_nav_pkg').find('local_nav_pkg')
-    world_path=os.path.join(pkg_share_local_nav, 'world/two_cone.world')
+    world_path=os.path.join(pkg_share_local_nav, 'world/three_cone.world')
     
     
     # Gazebo server
